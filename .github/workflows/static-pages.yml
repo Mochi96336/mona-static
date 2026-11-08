@@ -58,9 +58,12 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=6144
         run: ./node_modules/.bin/vue-cli-service build
 
+      - name: Audit every character image reference and emitted file
+        run: node scripts/audit-character-assets.mjs upstream "/${{ github.event.repository.name }}/"
+
       - name: Run calculation regression tests
         working-directory: upstream
-        run: node --test tests/team-dps-cpu-numeric.test.mjs tests/team-dps-numeric.test.mjs tests/panel-search-7203.test.mjs
+        run: node --test tests/team-dps-cpu-numeric.test.mjs tests/team-dps-numeric.test.mjs tests/panel-search-7203.test.mjs tests/mitya-target-modes-7202.test.mjs tests/mitya-valeriy-release-7203.test.mjs tests/mitya-timing-7203.test.mjs
 
       - name: Include upstream legal notices in deployed files
         run: |
