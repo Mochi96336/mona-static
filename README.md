@@ -17,7 +17,7 @@ Pinned upstream: release v7.2.03, commit 21dcfb2276ca52fa19f543d98c0b8d69ecf471f
 3. Patch the checkout for static-only mode: hash routing, asset URL rebasing, browser session IDs, local statistics, no desktop updater and no game-account sign-in.
 4. Build the frontend and WASM into the dist directory.
 5. Serve dist with a static-only HTTP server, and run a Chromium smoke test of the calculator, team configuration and UID import pages.
-6. Upload the build artifact. On a verified push to main, deploy it to GitHub Pages.
+6. Upload the build artifact. On main pushes and daily schedules, deploy a successfully verified candidate to GitHub Pages and expose its tag/commit in site-version.json.
 
 ## Deliberate exclusions and risks
 
@@ -25,7 +25,7 @@ Pinned upstream: release v7.2.03, commit 21dcfb2276ca52fa19f543d98c0b8d69ecf471f
 - Legacy share-code URLs and remote community statistics require compatibility work.
 - WebGPU varies by browser/device. CPU support is the baseline.
 - The test is only a smoke test, not a full numerical regression suite.
-- Automatic upstream version polling is intentionally not enabled until a pinned baseline is verified.
+- Once merged, the workflow checks the latest stable TwiceDrop release on a daily schedule. Each candidate is independently compiled and tested; a failure leaves the previously published site unchanged. Pull requests keep the pinned baseline for reproducibility.
 - External game images may require remote third-party hosts.
 
 ## Enable GitHub Pages
