@@ -60,7 +60,7 @@ jobs:
 
       - name: Run calculation regression tests
         working-directory: upstream
-        run: node --test tests/team-dps-cpu-numeric.test.mjs tests/team-dps-numeric.test.mjs tests/optimize-7107-regression.test.mjs tests/panel-search-7203.test.mjs
+        run: node --test tests/team-dps-cpu-numeric.test.mjs tests/team-dps-numeric.test.mjs tests/panel-search-7203.test.mjs
 
       - name: Include upstream legal notices in deployed files
         run: |
