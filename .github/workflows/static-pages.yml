@@ -58,9 +58,18 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=6144
         run: ./node_modules/.bin/vue-cli-service build
 
+      - name: Audit every character image reference and emitted file
+        run: node scripts/audit-character-assets.mjs upstream "/${{ github.event.repository.name }}/"
+
       - name: Run calculation regression tests
         working-directory: upstream
         run: node --test tests/team-dps-cpu-numeric.test.mjs tests/team-dps-numeric.test.mjs tests/panel-search-7203.test.mjs
+
+      - name: Check 7.2 release formulas and timing (bounded cases)
+        working-directory: upstream
+        shell: bash
+        run: |
+          timeout 240s node --test --test-name-pattern='^2: release native formulas|^3: Mitya generation boundary|^4: Valeriy special ICD|^frame-counted hold E|^new clocks keep Q' tests/mitya-valeriy-release-7203.test.mjs tests/mitya-timing-7203.test.mjs
 
       - name: Include upstream legal notices in deployed files
         run: |

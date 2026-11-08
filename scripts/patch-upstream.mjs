@@ -75,4 +75,19 @@ function visit(directory) {
 }
 visit(path.join(root, 'src'));
 visit(path.join(root, 'beta-data'));
-console.log('Rebased release-assets in ' + replaced + ' source files to ' + base);
+
+// The new /characters/ and /beta/ image references are local too.
+// Restrict these replacements to the generated character catalog to avoid
+// rewriting unrelated external image URLs and import paths.
+const characterCatalogPath = path.join(root, 'src/assets/_gen_character.js');
+let characterCatalog = fs.readFileSync(characterCatalogPath, 'utf8');
+for (const directory of ['characters', 'beta']) {
+  const before = '"/' + directory + '/';
+  const after = '"' + base + directory + '/';
+  if (!characterCatalog.includes(before)) {
+    throw new Error('Upstream character image catalog changed: missing ' + before);
+  }
+  characterCatalog = characterCatalog.replaceAll(before, after);
+}
+fs.writeFileSync(characterCatalogPath, characterCatalog);
+console.log('Rebased release-assets in ' + replaced + ' source files and new-character image paths to ' + base);
