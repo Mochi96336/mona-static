@@ -1,0 +1,119 @@
+name: Build and verify static Mona
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '23 3 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Resolve upstream (pinned for PR, latest stable for production)
+        id: upstream
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "${{ github.event_name }}" == 'pull_request' ]]; then
+            node scripts/resolve-upstream.mjs --pinned
+          else
+            node scripts/resolve-upstream.mjs --latest
+          fi
+
+      - name: Fetch exactly the selected upstream release
+        shell: bash
+        run: |
+          tag="${{ steps.upstream.outputs.tag }}"
+          expected="${{ steps.upstream.outputs.commit }}"
+          git clone --depth 1 --branch "$tag" https://github.com/TwiceDrop/genshin_artifact.git upstream
+          actual="$(git -C upstream rev-parse HEAD)"
+          test "$actual" = "$expected" || { echo "::error::Upstream tag moved: $actual != $expected"; exit 1; }
+
+      - name: Install upstream dependencies
+        working-directory: upstream
+        run: npm ci --legacy-peer-deps
+
+      - name: Apply static web compatibility
+        shell: bash
+        run: node scripts/patch-upstream.mjs upstream "/${{ github.event.repository.name }}/"
+
+      - name: Build browser-only site
+        working-directory: upstream
+        env:
+          ENV_FILE: .env.static.yaml
+          PublicPath: /${{ github.event.repository.name }}/
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: ./node_modules/.bin/vue-cli-service build
+
+      - name: Run calculation regression tests
+        working-directory: upstream
+        run: node --test tests/team-dps-cpu-numeric.test.mjs tests/team-dps-numeric.test.mjs tests/panel-search-7203.test.mjs
+
+      - name: Include upstream legal notices in deployed files
+        run: |
+          cp upstream/LICENSE upstream/dist/LICENSE.txt
+          cp upstream/THIRD_PARTY_NOTICES.md upstream/dist/THIRD_PARTY_NOTICES.md
+
+      - name: Record deployed upstream version
+        shell: bash
+        run: |
+          printf '{"tag":"%s","commit":"%s"}\n' "${{ steps.upstream.outputs.tag }}" "${{ steps.upstream.outputs.commit }}" > upstream/dist/site-version.json
+
+      - name: Install browser test runner
+        run: |
+          npm install --no-package-lock
+          npx playwright install --with-deps chromium
+
+      - name: Smoke test on a static-only HTTP server
+        shell: bash
+        env:
+          TEST_BASE_URL: http://127.0.0.1:4175/${{ github.event.repository.name }}/
+        run: |
+          node scripts/serve-dist.mjs upstream/dist "/${{ github.event.repository.name }}/" > /tmp/mona-static-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          sleep 2
+          node scripts/smoke.mjs
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: validated-site
+          path: upstream/dist
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build-and-test
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: validated-site
+          path: dist
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - id: deployment
+        uses: actions/deploy-pages@v4
