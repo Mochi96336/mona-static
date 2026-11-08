@@ -5,6 +5,8 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  schedule:
+    - cron: '23 3 * * *'
 
 permissions:
   contents: read
@@ -19,11 +21,23 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Fetch exactly the pinned upstream release
+      - name: Resolve upstream (pinned for PR, latest stable for production)
+        id: upstream
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "${{ github.event_name }}" == 'pull_request' ]]; then
+            node scripts/resolve-upstream.mjs --pinned
+          else
+            node scripts/resolve-upstream.mjs --latest
+          fi
+
+      - name: Fetch exactly the selected upstream release
         shell: bash
         run: |
-          tag="$(node -p "require('./upstream.lock.json').tag")"
-          expected="$(node -p "require('./upstream.lock.json').commit")"
+          tag="${{ steps.upstream.outputs.tag }}"
+          expected="${{ steps.upstream.outputs.commit }}"
           git clone --depth 1 --branch "$tag" https://github.com/TwiceDrop/genshin_artifact.git upstream
           actual="$(git -C upstream rev-parse HEAD)"
           test "$actual" = "$expected" || { echo "::error::Upstream tag moved: $actual != $expected"; exit 1; }
@@ -53,6 +67,11 @@ jobs:
           cp upstream/LICENSE upstream/dist/LICENSE.txt
           cp upstream/THIRD_PARTY_NOTICES.md upstream/dist/THIRD_PARTY_NOTICES.md
 
+      - name: Record deployed upstream version
+        shell: bash
+        run: |
+          printf '{"tag":"%s","commit":"%s"}\n' "${{ steps.upstream.outputs.tag }}" "${{ steps.upstream.outputs.commit }}" > upstream/dist/site-version.json
+
       - name: Install browser test runner
         run: |
           npm install --no-package-lock
@@ -77,7 +96,7 @@ jobs:
           retention-days: 7
 
   deploy:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: build-and-test
     runs-on: ubuntu-24.04
     permissions:
